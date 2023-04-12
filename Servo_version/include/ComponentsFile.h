@@ -20,16 +20,17 @@ sensors and Time of Flight VL53L0X sensors are in metres
 #define StepperPin2 8       //Stepper IN2 Pin
 #define StepperPin3 7       //Stepper IN3 Pin
 #define StepperPin4 4       //Stepper IN4 Pin
-#define VServo 9            //Vertical Servo pin
+#define VServo 3            //Vertical Servo pin
+#define HServo 5            //Horizontal Servo pin
 #define Optpin 2            //Opto pin
 
 //:::::::::::::::::::::::::: I2C Addresses :::::::::::::::::::::::::://
 #define TFLuna_address 0x10     //I2C address of the TF Luna TOF sensor
 
 //:::::::::::::::::::::::::: DEFINE GLOBAL COMPONENTS :::::::::::::::::::::::::://
-AccelStepper SensorStepper(AccelStepper::HALF4WIRE, StepperPin1, StepperPin3, StepperPin2, StepperPin4); // Define some steppers and the pins the will use
 TFLI2C lidar;
 Servo V_axis;
+Servo H_axis;
 
 //:::::::::::::::::::::::::: STRUCTURES :::::::::::::::::::::::::://
 struct PosData
@@ -54,81 +55,31 @@ uint16_t Tfdistance;
 double X_inertia;
 double Y_inertia;
 double Z_inertia;
-double stepper_angle;
-double servo_angle;
+double H_angle;
+double V_angle;
 
 //:::::::::::::::::::::::::: DEFINE PARAMETERS :::::::::::::::::::::::::://
 const double MY_PI = 3.141592653589793238462643;    //Value of pi
 uint16_t tfFrame = TFL_DEF_FPS;                     //Default frame rate for TF Luna
-const int FullStep = 4096;                          //Steps per revolution for the stepper motor
-const int Gear_Ratio = 4;                           //Gear ratio between the stepper motor and the lidar rotor
+const int Gear_Ratio = 0.5;                         //Gear ratio between the stepper motor and the lidar rotor
 const int Lidar_limit = 650;                        //Limit of the range of the Lidar in cm. This is done to fit 1 byte unsigned int
 const int avg_reading = 1;                          //Number of readings to average
 const bool data_send = false;                       //Boolean to select either to send data or print to serial
 const bool both_run = false;                        //Boolean to specify if to do vertical sweep in both directions
 
-const int stepper_division = 1;                     //Degree divisions for the movement of the horizontal sweep (even numbers between 2 and 30 degrees!)
-const int stepper_end = 360;                        //Rotation range for the movement of the horizontal sweep (Steps of 30 degrees up to 360 degrees!)
-const int stepper_start = 0;                        //Degree offset from 0 for the start point of the movement of the horizontal sweep
-const int first_stepper_delay = 50;
-const int stepper_delay = 1;
+const int H_division = 1;                           //Degree divisions for the movement of the horizontal sweep (even numbers between 2 and 30 degrees!)
+const int H_end = 360;                              //Rotation range for the movement of the horizontal sweep (Steps of 30 degrees up to 360 degrees!)
+const int H_start = 0;                              //Degree offset from 0 for the start point of the movement of the horizontal sweep
+const int first_H_delay = 50;
+const int H_delay = 1;
 
-const int servo_division = 1;                       //Degree divisions for the movement of the vertical sweep
-const int servo_end = 140;                          //Rotation range for the movement of the vertical sweep
-const int servo_start = 0;                          //Degree offset from 0 for the start point of the movement of the vertical sweep
-const int first_servo_delay = 250;
-const int servo_delay = 5;
+const int V_division = 1;                           //Degree divisions for the movement of the vertical sweep
+const int V_end = 140;                              //Rotation range for the movement of the vertical sweep
+const int V_start = 0;                              //Degree offset from 0 for the start point of the movement of the vertical sweep
+const int first_V_delay = 250;
+const int V_delay = 5;
 const double srv_dir_ofst = 0.0;                    //Mismatch angle between sweeping up and sweeping down
 
-
-//:::::::::::::::::::::::::: STEPPER MOTOR :::::::::::::::::::::::::://
-void StepperInitialize(double mxspd, double spd, double accl)
-{
-    pinMode(Optpin,INPUT);
-    SensorStepper.setMaxSpeed(mxspd);
-    SensorStepper.setAcceleration(accl);
-    SensorStepper.setSpeed(spd);
-    delay(500);
-    bool moveStep = true;
-    while (moveStep)
-    {
-        SensorStepper.move(1);
-        SensorStepper.runSpeed();
-        if (digitalRead(Optpin) == LOW)
-        {
-            // Serial.println(digitalRead(Optpin));
-            moveStep = false;
-        }
-        else
-        {
-            // Serial.println(digitalRead(Optpin));
-        }
-    }
-    SensorStepper.setCurrentPosition(0);
-    SensorStepper.setMaxSpeed(mxspd);
-    SensorStepper.setAcceleration(accl);
-    SensorStepper.setSpeed(spd);
-}
-
-void MoveToDeg(int deg) 
-{
-    double Fs = FullStep;
-    double Gr = Gear_Ratio;
-    double deg_move = ceil((Fs*deg/(360.0*Gr)));
-    SensorStepper.moveTo((long)deg_move);
-    // SensorStepper.setSpeed(960.0);
-    SensorStepper.runToPosition();
-    // Serial.print("Step Requested: ");
-    // Serial.print(deg_move);
-    // Serial.print("Current Step: ");
-    // Serial.println(SensorStepper.currentPosition());
-    // delay(10);
-}
-
-int StepperDegree()
-{
-    return (int)(360*Gear_Ratio*SensorStepper.currentPosition()/FullStep);
-}
 
 //:::::::::::::::::::::::::: VERTICAL SERVO :::::::::::::::::::::::::://
 void ServoInitialization()
@@ -136,14 +87,25 @@ void ServoInitialization()
     V_axis.attach(VServo,500,2500);
     V_axis.write(0);
     delay(1000);
-    V_axis.write(180);
+    V_axis.write(110);
     delay(1000);
     V_axis.write(90);
+    delay(1000);
+    H_axis.attach(HServo,500,2500);
+    H_axis.write(70);
+    delay(1000);
+    H_axis.write(110);
+    delay(1000);
+    H_axis.write(90);
 }
 
-void SetAngle(int deg)
+void SetVAngle(int deg)
 {
     V_axis.write(deg);
+}
+void SetHAngle(int deg)
+{
+    H_axis.write(deg);
 }
 
 //:::::::::::::::::::::::::: TF LUNA SENSOR :::::::::::::::::::::::::://
@@ -222,41 +184,42 @@ uint16_t TfReturnDistance()
     return dist_cm;
 }
 
+//:::::::::::::::::::::::::: LOOP FUNCTION :::::::::::::::::::::::::://
 void RunLoopBoth()
 {
-    bool first_servo = true;
-    bool first_stepper = true;
+    bool first_V = true;
+    bool first_H = true;
     bool move_down = true;
-    for (int stp = stepper_start; stp <= stepper_end; stp += stepper_division)
+    for (int stp = H_start; stp <= H_end; stp += H_division)
     {
-        first_servo = true;
-        stepper_angle = stp;
-        MoveToDeg(stp);
-        if (first_stepper)
+        first_H = true;
+        H_angle = stp;
+        SetHAngle(stp);
+        if (first_H)
         {
-            delay(first_stepper_delay);
-            first_stepper = false;
+            delay(first_H_delay);
+            first_H = false;
         }
         else
         {
-            delay(stepper_delay);
+            delay(H_delay);
         }
 
         if (move_down)
         {
             move_down = false;
-            for (int srv = servo_start; srv <= servo_end; srv += servo_division)
+            for (int srv = V_start; srv <= V_end; srv += V_division)
             {
-                servo_angle = 90 - srv-srv_dir_ofst;
+                V_angle = 90 - srv-srv_dir_ofst;
                 V_axis.write(srv);
-                if (first_servo)
+                if (first_V)
                 {
-                    delay(first_servo_delay);
-                    first_servo = false;
+                    delay(first_V_delay);
+                    first_V = false;
                 }
                 else
                 {
-                    delay(servo_delay);
+                    delay(V_delay);
                 }
                 Tfdistance = 0;
                 for (int i = 0; i < avg_reading; i++)
@@ -268,9 +231,9 @@ void RunLoopBoth()
 
                 if (Tfdistance < 30000)
                 {
-                    X_inertia = Tfdistance * cos(servo_angle * MY_PI / 180) * cos(-stp * MY_PI / 180);
-                    Y_inertia = Tfdistance * cos(servo_angle * MY_PI / 180) * sin(-stp * MY_PI / 180);
-                    Z_inertia = Tfdistance * sin(servo_angle * MY_PI / 180);
+                    X_inertia = Tfdistance * cos(V_angle * MY_PI / 180) * cos(-stp * MY_PI / 180);
+                    Y_inertia = Tfdistance * cos(V_angle * MY_PI / 180) * sin(-stp * MY_PI / 180);
+                    Z_inertia = Tfdistance * sin(V_angle * MY_PI / 180);
                     obstacle_pos.x = X_inertia;
                     obstacle_pos.y = -Y_inertia;
                     obstacle_pos.z = Z_inertia;
@@ -316,18 +279,18 @@ void RunLoopBoth()
         else
         {
             move_down = true;
-            for (int srv = servo_end; srv >= servo_start; srv -= servo_division)
+            for (int srv = V_end; srv >= V_start; srv -= V_division)
             {
-                servo_angle = 90 - srv + srv_dir_ofst;
+                H_angle = 90 - srv + srv_dir_ofst;
                 V_axis.write(srv); // SetAngle(srv);
-                if (first_servo)
+                if (first_V)
                 {
-                    delay(first_servo_delay);
-                    first_servo = false;
+                    delay(first_V_delay);
+                    first_H = false;
                 }
                 else
                 {
-                    delay(servo_delay);
+                    delay(V_delay);
                 }
                 Tfdistance = 0;
                 for (int i = 0; i < avg_reading; i++)
@@ -339,9 +302,9 @@ void RunLoopBoth()
 
                 if (Tfdistance < 30000)
                 {
-                    X_inertia = Tfdistance * cos(servo_angle * MY_PI / 180) * cos(-stp * MY_PI / 180);
-                    Y_inertia = Tfdistance * cos(servo_angle * MY_PI / 180) * sin(-stp * MY_PI / 180);
-                    Z_inertia = Tfdistance * sin(servo_angle * MY_PI / 180);
+                    X_inertia = Tfdistance * cos(V_angle * MY_PI / 180) * cos(-stp * MY_PI / 180);
+                    Y_inertia = Tfdistance * cos(V_angle * MY_PI / 180) * sin(-stp * MY_PI / 180);
+                    Z_inertia = Tfdistance * sin(V_angle * MY_PI / 180);
                     obstacle_pos.x = X_inertia;
                     obstacle_pos.y = -Y_inertia;
                     obstacle_pos.z = Z_inertia;
@@ -389,35 +352,35 @@ void RunLoopBoth()
 
 void RunLoopOne()
 {
-    bool first_servo = true;
-    bool first_stepper = true;
-    for (int stp = stepper_start; stp <= stepper_end; stp += stepper_division)
+    bool first_V = true;
+    bool first_H = true;
+    for (int stp = H_start; stp <= H_end; stp += H_division)
     {
-        first_servo = true;
-        stepper_angle = stp;
-        MoveToDeg(stp);
-        if (first_stepper)
+        first_V = true;
+        H_angle = stp;
+        SetHAngle(stp);
+        if (first_H)
         {
-            delay(first_stepper_delay);
-            first_stepper = false;
+            delay(first_H_delay);
+            first_H = false;
         }
         else
         {
-            delay(stepper_delay);
+            delay(H_delay);
         }
 
-        for (int srv = servo_start; srv <= servo_end; srv += servo_division)
+        for (int srv = V_start; srv <= V_end; srv += V_division)
         {
-            servo_angle = 90 - srv-srv_dir_ofst;
+            V_angle = 90 - srv-srv_dir_ofst;
             V_axis.write(srv);
-            if (first_servo)
+            if (first_V)
             {
-                delay(first_servo_delay);
-                first_servo = false;
+                delay(first_V_delay);
+                first_V = false;
             }
             else
             {
-                delay(servo_delay);
+                delay(V_delay);
             }
             Tfdistance = 0;
             for (int i = 0; i < avg_reading; i++)
@@ -429,9 +392,9 @@ void RunLoopOne()
 
             if (Tfdistance < 30000)
             {
-                X_inertia = Tfdistance * cos(servo_angle * MY_PI / 180) * cos(-stp * MY_PI / 180);
-                Y_inertia = Tfdistance * cos(servo_angle * MY_PI / 180) * sin(-stp * MY_PI / 180);
-                Z_inertia = Tfdistance * sin(servo_angle * MY_PI / 180);
+                X_inertia = Tfdistance * cos(V_angle * MY_PI / 180) * cos(-stp * MY_PI / 180);
+                Y_inertia = Tfdistance * cos(V_angle * MY_PI / 180) * sin(-stp * MY_PI / 180);
+                Z_inertia = Tfdistance * sin(V_angle * MY_PI / 180);
                 obstacle_pos.x = X_inertia;
                 obstacle_pos.y = -Y_inertia;
                 obstacle_pos.z = Z_inertia;
